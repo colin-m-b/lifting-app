@@ -43,7 +43,8 @@
   <script src="store.js"></script>
   <script src="app.js"></script>
   <script>
-    if ('serviceWorker' in navigator) {
+    var isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    if ('serviceWorker' in navigator && !isNative) {
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('sw.js').catch(function () {});
       });

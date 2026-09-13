@@ -1,0 +1,18 @@
+{
+  "name": "lifting-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Workout Log: offline GreySkull LP tracker, web app plus Android wrapper",
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/local-notifications": "^8.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}

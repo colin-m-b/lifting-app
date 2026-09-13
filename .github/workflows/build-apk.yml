@@ -1,0 +1,59 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Copy web assets into the Android project
+        run: npx cap sync android
+
+      - name: Build signed release APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../workout-log.apk
+
+      - name: Keep the APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: workout-log-apk
+          path: workout-log.apk
+
+      - name: Publish as the "latest" release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest workout-log.apk \
+            --title "Workout Log build ${{ github.run_number }}" \
+            --notes "Built from ${{ github.sha }}. Download workout-log.apk on your phone and open it to install or update."

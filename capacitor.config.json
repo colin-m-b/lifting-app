@@ -1,0 +1,14 @@
+{
+  "appId": "com.colinmb.liftingapp",
+  "appName": "Workout Log",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_notify",
+      "iconColor": "#4FD1A5"
+    }
+  }
+}

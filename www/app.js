@@ -222,6 +222,56 @@
     return null;
   }
 
+  // ---- native bridge (Capacitor Android wrapper) ----
+  /* In the APK, Android itself fires the rest alarms as notifications, so they
+     sound with the screen locked. In a browser this is all a no-op. */
+
+  var native = (function () {
+    try {
+      var C = window.Capacitor;
+      if (C && C.isNativePlatform && C.isNativePlatform() && C.Plugins && C.Plugins.LocalNotifications) return C.Plugins.LocalNotifications;
+    } catch (e) { /* not native */ }
+    return null;
+  })();
+  var nativeReady = false;
+
+  async function nativeSetup() {
+    if (!native || nativeReady) return;
+    try {
+      var perm = await native.checkPermissions();
+      if (perm.display !== 'granted') perm = await native.requestPermissions();
+      if (perm.display !== 'granted') return;
+      await native.createChannel({
+        id: 'rest',
+        name: 'Rest timer',
+        description: 'Dings when a rest period is over',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+        sound: 'default'
+      });
+      nativeReady = true;
+    } catch (e) { /* stay silent */ }
+  }
+
+  async function nativeScheduleRest(startedAt) {
+    if (!native) return;
+    await nativeSetup();
+    if (!nativeReady) return;
+    var r1 = state.settings.restSeconds, r2 = state.settings.restSeconds2;
+    try {
+      await native.cancel({ notifications: [{ id: 1 }, { id: 2 }] });
+      await native.schedule({ notifications: [
+        { id: 1, channelId: 'rest', title: 'Rest over', body: r1 + ' s. Next set.', schedule: { at: new Date(startedAt + r1 * 1000), allowWhileIdle: true } },
+        { id: 2, channelId: 'rest', title: 'Long rest', body: r2 + ' s. Get back on it.', schedule: { at: new Date(startedAt + r2 * 1000), allowWhileIdle: true } }
+      ] });
+    } catch (e) { /* ignore */ }
+  }
+  async function nativeCancelRest() {
+    if (!native) return;
+    try { await native.cancel({ notifications: [{ id: 1 }, { id: 2 }] }); } catch (e) { /* ignore */ }
+  }
+
   // ---- rest timer ----
 
   var timer = { startedAt: null, dinged: {}, tick: null };
@@ -239,6 +289,7 @@
   document.addEventListener('click', unlockAudio);
 
   function ding(times) {
+    if (native) return;
     try { if (navigator.vibrate) navigator.vibrate(times === 2 ? [200, 100, 200, 100, 200] : [200, 100, 200]); } catch (e) { /* ignore */ }
     if (!audioCtx) return;
     var t = audioCtx.currentTime;
@@ -264,11 +315,13 @@
     clearInterval(timer.tick);
     timer.tick = setInterval(tickRest, 250);
     tickRest();
+    nativeScheduleRest(timer.startedAt);
   }
   function stopRest() {
     clearInterval(timer.tick);
     timer.startedAt = null;
     timerBar.hidden = true;
+    nativeCancelRest();
   }
   function tickRest() {
     if (!timer.startedAt) return;
@@ -859,8 +912,15 @@
       el('label', { class: 'field', text: 'First ding (seconds)' }, [r1]),
       el('label', { class: 'field', text: 'Second ding (seconds)' }, [r2])
     ]));
-    rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'The timer starts when you enter reps for a set. Sound needs the phone unmuted; on iPhone the ringer switch also silences it.' }));
-    rt.appendChild(el('button', { class: 'btn btn-sm', text: 'Test sound', onclick: function () { unlockAudio(); ding(1); } }));
+    rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: native
+      ? 'The timer starts when you enter reps for a set. Android fires the dings as notifications, so they sound even with the screen locked. If they arrive late, set this app to "Unrestricted" under battery settings.'
+      : 'The timer starts when you enter reps for a set. In the browser the ding only plays while the app is on screen; the Android app version sounds with the screen locked.' }));
+    rt.appendChild(el('button', { class: 'btn btn-sm', text: native ? 'Test notification (5 s)' : 'Test sound', onclick: async function () {
+      if (!native) { unlockAudio(); ding(1); return; }
+      await nativeSetup();
+      if (!nativeReady) { alert('Notifications are blocked for this app. Allow them in Android settings.'); return; }
+      try { await native.schedule({ notifications: [{ id: 99, channelId: 'rest', title: 'Rest over', body: 'Test ding', schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] }); toast('Lock the screen; ding in 5 s'); } catch (e) { alert('Could not schedule: ' + e.message); }
+    } }));
     var awakeLabel = el('label', { class: 'check', style: 'margin-top:10px' });
     var awakeBox = el('input', { type: 'checkbox' });
     awakeBox.checked = !!st.keepAwake;
@@ -1012,5 +1072,6 @@
     await S.init();
     await reloadAll();
     render();
+    nativeSetup();
   })();
 })();

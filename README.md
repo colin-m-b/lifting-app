@@ -1,15 +1,33 @@
 # Workout Log
 
-A small offline web app for logging weightlifting sets and treadmill sessions on a phone.
-Plain HTML, CSS and JavaScript. No build step, no accounts, no server. All data stays in
-the phone's browser (IndexedDB); JSON export is the only backup route.
+A small offline app for logging GreySkull LP lifts, accessories and cardio on an Android
+phone. Plain HTML, CSS and JavaScript in `www/`, wrapped as an Android APK with Capacitor.
+No accounts, no server, no analytics. All data stays on the phone (IndexedDB); JSON
+export is the only backup route.
 
-## Use it
+## Install the Android app
 
-1. Turn on GitHub Pages for this repo (Settings → Pages → Deploy from branch → `main`, root).
-2. Open the Pages URL on your phone.
-3. Add it to the home screen (iOS Safari: Share → Add to Home Screen; Android Chrome:
-   menu → Install app). It then runs full screen and works offline.
+Every push to `main` builds a signed APK and publishes it as the release tagged
+`latest`. On the phone:
+
+1. Open the repo's Releases page and download `workout-log.apk`.
+2. Open the file. The first time, Android asks to allow installs from your browser;
+   allow it. Later downloads install as updates and keep your data.
+3. On first launch, allow notifications: the rest timer uses them to ding with the
+   screen locked.
+4. If dings arrive late, set the app to Unrestricted under Settings → Apps →
+   Workout Log → Battery.
+
+Every build is signed with the committed `android/app/lifting.keystore`, which is what
+lets a new APK install over the old one. Do not regenerate it, or the phone will refuse
+the update until the old app is uninstalled (export your data first if that happens).
+
+## Or use it in the browser
+
+The same code deploys to GitHub Pages from `www/` (Settings → Pages → Source: GitHub
+Actions). Open the URL in Chrome and choose Install app. Everything works except the
+rest timer's ding while the screen is locked; in the browser it only sounds while the
+app is on screen.
 
 ## The programme
 
@@ -32,10 +50,12 @@ warmup and working. Warmups are excluded from progress charts and from progressi
 
 Barbell lifts show the plates per side. Bar weight and the plates you own are in Settings.
 
-A rest timer starts each time you enter reps for a set. It dings at 90 s and again at
-180 s (both adjustable) and vibrates on Android. While the Today tab is open the app
-holds a screen wake lock so the phone does not lock mid-rest (toggle in Settings).
-Sound depends on the phone being unmuted.
+A rest timer starts each time you enter reps for a set and dings at 90 s and again at
+180 s (both adjustable). In the Android app the dings are notifications scheduled with
+Android's alarm system, so they fire with the screen locked or the app in the
+background; logging the next set cancels any pending ones. While the Today tab is open
+the app also holds a screen wake lock so the phone does not lock mid-rest (toggle in
+Settings).
 
 ## Screens
 
@@ -53,14 +73,25 @@ Sound depends on the phone being unmuted.
 ## Files
 
 ```
-index.html            page shell and tab bar
-style.css             mobile-first styles
-store.js              IndexedDB store: exercises, workouts, settings, export/import
-app.js                the four screens
-sw.js                 service worker for offline use (bump CACHE when files change)
-manifest.webmanifest  PWA manifest
-icon.svg / *.png      app icon
+www/index.html            page shell and tab bar
+www/style.css             mobile-first styles
+www/store.js              IndexedDB store: exercises, workouts, settings, export/import
+www/app.js                the four screens, rest timer, native notification bridge
+www/sw.js                 service worker for the browser version (bump CACHE on changes)
+www/manifest.webmanifest  PWA manifest
+capacitor.config.json     app id, name, web dir
+android/                  Capacitor Android project (committed; CI builds it)
+android/app/lifting.keystore  signing key shared by every build
+assets/                   source icons for `npx @capacitor/assets`
+.github/workflows/        build-apk.yml (APK → release "latest"), pages.yml (www → Pages)
 ```
+
+## Changing the app
+
+Edit files in `www/`, push to `main`, and download the new APK from Releases. There is
+no build step for the web code itself. To preview locally, serve `www/` with any static
+server (`python3 -m http.server -d www`). Regenerate icons with
+`npx @capacitor/assets generate --android` after changing `assets/`.
 
 ## Data shape
 
