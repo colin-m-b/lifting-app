@@ -33,8 +33,9 @@ warmup and working. Warmups are excluded from progress charts and from progressi
 Barbell lifts show the plates per side. Bar weight and the plates you own are in Settings.
 
 A rest timer starts each time you enter reps for a set. It dings at 90 s and again at
-180 s (both adjustable). Sound depends on the phone being unmuted; JavaScript timers
-pause when the screen locks, so keep the app in front between sets.
+180 s (both adjustable) and vibrates on Android. While the Today tab is open the app
+holds a screen wake lock so the phone does not lock mid-rest (toggle in Settings).
+Sound depends on the phone being unmuted.
 
 ## Screens
 

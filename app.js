@@ -282,6 +282,29 @@
   document.getElementById('timer-stop').addEventListener('click', stopRest);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tickRest(); });
 
+  // ---- wake lock: keep the screen on while a workout is open ----
+
+  var wakeLock = null;
+  async function acquireWakeLock() {
+    if (!('wakeLock' in navigator) || !state.settings.keepAwake || state.tab !== 'today') return;
+    if (wakeLock) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', function () { wakeLock = null; });
+    } catch (e) { wakeLock = null; }
+  }
+  function releaseWakeLock() {
+    if (!wakeLock) return;
+    try { wakeLock.release(); } catch (e) { /* ignore */ }
+    wakeLock = null;
+  }
+  function syncWakeLock() {
+    if (state.tab === 'today' && state.settings.keepAwake) acquireWakeLock();
+    else releaseWakeLock();
+  }
+  /* The lock is dropped whenever the app goes to the background; take it back on return. */
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) syncWakeLock(); });
+
   // ---- workout editor (shared by Today and History) ----
 
   function renderWorkoutEditor(workout, workouts, opts) {
@@ -838,6 +861,14 @@
     ]));
     rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'The timer starts when you enter reps for a set. Sound needs the phone unmuted; on iPhone the ringer switch also silences it.' }));
     rt.appendChild(el('button', { class: 'btn btn-sm', text: 'Test sound', onclick: function () { unlockAudio(); ding(1); } }));
+    var awakeLabel = el('label', { class: 'check', style: 'margin-top:10px' });
+    var awakeBox = el('input', { type: 'checkbox' });
+    awakeBox.checked = !!st.keepAwake;
+    awakeBox.addEventListener('change', async function () { await setSetting('keepAwake', awakeBox.checked); syncWakeLock(); });
+    awakeLabel.appendChild(awakeBox);
+    awakeLabel.appendChild(document.createTextNode(' Keep the screen on while the Today tab is open'));
+    rt.appendChild(awakeLabel);
+    if (!('wakeLock' in navigator)) rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'This browser does not support keeping the screen on.' }));
     view.appendChild(rt);
 
     // Exercises
@@ -962,6 +993,7 @@
 
   function render() {
     document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('is-active', b.dataset.tab === state.tab); });
+    syncWakeLock();
     return renderers[state.tab]().catch(function (e) {
       view.innerHTML = '';
       view.appendChild(el('p', { class: 'empty', text: 'Something went wrong: ' + e.message }));

@@ -34,7 +34,8 @@
     bar: 20,
     plates: [25, 20, 15, 10, 5, 2.5, 1.25, 1, 0.5],
     restSeconds: 90,
-    restSeconds2: 180
+    restSeconds2: 180,
+    keepAwake: true
   };
 
   function uid() {
