@@ -24,6 +24,7 @@
     exercises: [],
     settings: Object.assign({}, S.DEFAULT_SETTINGS),
     openHistoryId: null,
+    historyView: 'month',
     progressExerciseId: null,
     progressIncludeWarmups: false
   };
@@ -154,7 +155,7 @@
     var amrap = ws[ws.length - 1];
     var w = entryWorkingWeight(entry);
     var inc = ex.increment || 2.5;
-    var step = ex.barbell ? barResolution() : 0.5;
+    var step = warmupStep();
     if (amrap.reps == null) return { weight: w, why: 'repeat (no reps logged)' };
     if (amrap.reps >= 10) return { weight: w + 2 * inc, why: amrap.reps + ' reps: double bump, +' + fmtNum(2 * inc) };
     if (amrap.reps >= 5) return { weight: w + inc, why: amrap.reps + ' reps: +' + fmtNum(inc) };
@@ -232,13 +233,17 @@
   /* In the APK, Android itself fires the rest alarms as notifications, so they
      sound with the screen locked. In a browser this is all a no-op. */
 
-  var native = (function () {
+  var plugins = (function () {
     try {
       var C = window.Capacitor;
-      if (C && C.isNativePlatform && C.isNativePlatform() && C.Plugins && C.Plugins.LocalNotifications) return C.Plugins.LocalNotifications;
+      if (C && C.isNativePlatform && C.isNativePlatform() && C.Plugins) return C.Plugins;
     } catch (e) { /* not native */ }
-    return null;
+    return {};
   })();
+  var native = plugins.LocalNotifications || null;
+  var nativeFs = plugins.Filesystem || null;
+  var nativeShare = plugins.Share || null;
+  var nativeAwake = plugins.KeepAwake || null;
   var nativeReady = false;
   var REST_CHANNEL = 'rest-v2';
 
@@ -349,10 +354,17 @@
 
   // ---- wake lock: keep the screen on while a workout is open ----
 
+  /* The APK uses the KeepAwake plugin (FLAG_KEEP_SCREEN_ON); the browser Wake Lock API
+     is unreliable inside Android's WebView. */
   var wakeLock = null;
+  var canKeepAwake = !!nativeAwake || ('wakeLock' in navigator);
   async function acquireWakeLock() {
-    if (!('wakeLock' in navigator) || !state.settings.keepAwake || state.tab !== 'today') return;
+    if (!canKeepAwake || !state.settings.keepAwake || state.tab !== 'today') return;
     if (wakeLock) return;
+    if (nativeAwake) {
+      try { await nativeAwake.keepAwake(); wakeLock = 'native'; } catch (e) { wakeLock = null; }
+      return;
+    }
     try {
       wakeLock = await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release', function () { wakeLock = null; });
@@ -360,7 +372,7 @@
   }
   function releaseWakeLock() {
     if (!wakeLock) return;
-    try { wakeLock.release(); } catch (e) { /* ignore */ }
+    try { if (nativeAwake) nativeAwake.allowSleep(); else wakeLock.release(); } catch (e) { /* ignore */ }
     wakeLock = null;
   }
   function syncWakeLock() {
@@ -381,11 +393,13 @@
       var inp = el('input', Object.assign({
         type: 'number', inputmode: 'decimal', step: 'any', value: obj[key] == null ? '' : obj[key]
       }, attrs || {}));
+      var wasBlank = obj[key] == null;
+      inp.addEventListener('focus', function () { wasBlank = obj[key] == null; });
       inp.addEventListener('input', function () {
         obj[key] = inp.value === '' ? null : Number(inp.value);
         save();
       });
-      if (onChange) inp.addEventListener('change', onChange);
+      if (onChange) inp.addEventListener('change', function () { onChange(wasBlank); wasBlank = obj[key] == null; });
       return inp;
     }
 
@@ -407,8 +421,10 @@
             saveNow().then(rerender);
           } })]),
           el('td', null, [numInput(s, 'weight')]),
-          el('td', null, [numInput(s, 'reps', { inputmode: 'numeric', step: '1' }, function () {
-            if (s.reps != null && opts.live) startRest();
+          el('td', null, [numInput(s, 'reps', { inputmode: 'numeric', step: '1' }, function (wasBlank) {
+            /* Rest timer: programme lifts only, working sets only, and only when the
+               reps were just logged (correcting a number does not restart it). */
+            if (s.reps != null && opts.live && wasBlank && ex.program && !s.warmup) startRest();
           })]),
           el('td', { class: 'x' }, [el('button', { class: 'btn btn-ghost btn-icon', text: '×', 'aria-label': 'Remove set', onclick: function () {
             en.sets.splice(i, 1);
@@ -419,6 +435,24 @@
       });
       table.appendChild(tbody);
       return table;
+    }
+
+    /* A note that sticks to the exercise across workouts (seat height, grip, bar). */
+    function exerciseNote(ex) {
+      if (!ex.id || ex.name === '(deleted exercise)') return null;
+      return el('button', { class: 'exnote' + (ex.note ? '' : ' is-empty'), text: ex.note ? '📝 ' + ex.note : '+ note for this exercise', onclick: async function () {
+        var n = prompt('Note for ' + ex.name + ' (shown every time)', ex.note || '');
+        if (n == null) return;
+        ex.note = n.trim();
+        await S.saveExercise(ex); await reloadExercises(); rerender();
+      } });
+    }
+
+    function amrapHint(ex, en) {
+      if (en.target == null) return null;
+      var inc = ex.increment || 2.5, w = en.target;
+      return el('div', { class: 'hint', text: 'Last set at ' + fmtNum(w) + ': 5–9 reps → ' + fmtNum(w + inc) +
+        ' next time · 10+ → ' + fmtNum(w + 2 * inc) + ' · under 5 → ' + fmtNum(roundTo(w * 0.9, warmupStep())) });
     }
 
     function entryCard(en) {
@@ -433,6 +467,7 @@
           saveNow().then(rerender);
         } })
       ]));
+      card.appendChild(exerciseNote(ex));
 
       // ---- cardio ----
       if (ex.type === 'cardio') {
@@ -500,7 +535,7 @@
         if (ex.barbell && Number(targetInp.value)) slot.appendChild(platesLine(Number(targetInp.value)));
         card.appendChild(slot);
 
-        if (en.sets.length) card.appendChild(setsTable(en, ex));
+        if (en.sets.length) { card.appendChild(setsTable(en, ex)); card.appendChild(amrapHint(ex, en)); }
         card.appendChild(el('div', { class: 'row' }, [
           el('button', { class: 'btn grow', text: '+ Set', onclick: function () {
             var prev = workingSets(en).slice(-1)[0] || { weight: en.target, reps: null };
@@ -627,6 +662,12 @@
       note.addEventListener('input', function () { workout.note = note.value; save(); });
       root.appendChild(note);
 
+      var bw = el('div', { class: 'row', style: 'margin-top:8px' }, [
+        el('span', { class: 'muted small', text: 'Bodyweight (' + unit() + ')' }),
+        numInput(workout, 'bodyweight', { placeholder: 'optional', style: 'max-width:140px' })
+      ]);
+      root.appendChild(bw);
+
       if (opts.footer) { var foot = opts.footer(); if (foot) root.appendChild(foot); }
     }
 
@@ -705,18 +746,27 @@
     } }));
     view.appendChild(addRow);
 
+    var seg = el('div', { class: 'seg' });
+    [['week', 'Week'], ['month', 'Month'], ['all', 'All time']].forEach(function (v) {
+      seg.appendChild(el('button', { class: 'seg-btn' + (state.historyView === v[0] ? ' is-active' : ''), text: v[1], onclick: function () {
+        state.historyView = v[0]; render();
+      } }));
+    });
+    view.appendChild(seg);
+
     if (!workouts.length) {
       view.appendChild(el('p', { class: 'empty', text: 'No workouts yet.' }));
       return;
     }
 
-    var lastMonth = '';
+    var lastGroup = '';
     workouts.forEach(function (w) {
-      var month = w.date.slice(0, 7);
-      if (month !== lastMonth) {
-        lastMonth = month;
-        var p = month.split('-');
-        view.appendChild(el('h2', { text: new Date(Number(p[0]), Number(p[1]) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }));
+      var g = historyGroup(w.date, state.historyView);
+      if (g.key !== lastGroup) {
+        lastGroup = g.key;
+        var members = workouts.filter(function (x) { return historyGroup(x.date, state.historyView).key === g.key; });
+        view.appendChild(el('h2', { text: g.label }));
+        view.appendChild(el('p', { class: 'muted small group-stats', text: groupStats(members) }));
       }
       var open = state.openHistoryId === w.id;
       var card = el('div', { class: 'card' });
@@ -764,6 +814,38 @@
     });
   }
 
+  /* Grouping for the History tab. */
+  function historyGroup(date, mode) {
+    if (mode === 'all') return { key: 'all', label: 'All time' };
+    var p = date.split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    if (mode === 'week') {
+      var dow = (d.getDay() + 6) % 7; // Monday = 0
+      var mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow);
+      var sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+      var key = mon.getFullYear() + '-' + ('0' + (mon.getMonth() + 1)).slice(-2) + '-' + ('0' + mon.getDate()).slice(-2);
+      var opts = { day: 'numeric', month: 'short' };
+      return { key: key, label: mon.toLocaleDateString(undefined, opts) + ' – ' + sun.toLocaleDateString(undefined, opts) };
+    }
+    return { key: date.slice(0, 7), label: new Date(Number(p[0]), Number(p[1]) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) };
+  }
+
+  function groupStats(ws) {
+    var sets = 0, vol = 0, mins = 0, lifts = 0, cardio = 0;
+    ws.forEach(function (w) {
+      w.entries.forEach(function (en) {
+        if (en.cardio) { cardio++; mins += en.cardio.minutes || 0; return; }
+        var done = workingSets(en).filter(function (s) { return s.weight != null && s.reps != null; });
+        if (done.length) lifts++;
+        done.forEach(function (s) { sets++; vol += s.weight * s.reps; });
+      });
+    });
+    var bits = [ws.length + (ws.length === 1 ? ' session' : ' sessions')];
+    if (sets) bits.push(sets + ' sets · ' + fmtNum(Math.round(vol)) + ' ' + unit() + ' volume');
+    if (cardio) bits.push(fmtNum(mins) + ' min cardio');
+    return bits.join(' · ');
+  }
+
   // ---- Progress ----
 
   function e1rm(w, reps) { return reps > 0 ? w * (1 + reps / 30) : w; }
@@ -809,7 +891,9 @@
     var pad = (max - min) * 0.1; min -= pad; max += pad;
     if (integer && min < 0) min = 0;
     var n = points.length;
-    function x(i) { return n === 1 ? (padL + (W - padL - padR) / 2) : padL + (W - padL - padR) * i / (n - 1); }
+    var ts = points.map(function (p) { return Date.parse(p.date); });
+    var t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
+    function x(i) { return t1 === t0 ? (padL + (W - padL - padR) / 2) : padL + (W - padL - padR) * (ts[i] - t0) / (t1 - t0); }
     function y(v) { return padT + (H - padT - padB) * (1 - (v - min) / (max - min)); }
     function svgEl(tag, attrs, text) {
       var e = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -850,7 +934,7 @@
     view.innerHTML = '';
 
     var active = state.exercises.filter(function (e) { return !e.archived; });
-    if (!state.progressExerciseId || !active.some(function (e) { return e.id === state.progressExerciseId; })) {
+    if (!state.progressExerciseId || (state.progressExerciseId !== 'bodyweight' && !active.some(function (e) { return e.id === state.progressExerciseId; }))) {
       state.progressExerciseId = active.length ? active[0].id : null;
     }
     if (!state.progressExerciseId) { view.appendChild(el('p', { class: 'empty', text: 'No exercises.' })); return; }
@@ -861,8 +945,24 @@
       if (e.id === state.progressExerciseId) o.selected = true;
       sel.appendChild(o);
     });
+    var bwo = el('option', { value: 'bodyweight', text: 'Bodyweight' });
+    if (state.progressExerciseId === 'bodyweight') bwo.selected = true;
+    sel.appendChild(bwo);
     sel.addEventListener('change', function () { state.progressExerciseId = sel.value; render(); });
     view.appendChild(sel);
+
+    if (state.progressExerciseId === 'bodyweight') {
+      var bpts = workouts.slice().reverse().filter(function (w) { return w.bodyweight != null; })
+        .map(function (w) { return { date: w.date, bw: w.bodyweight }; });
+      if (!bpts.length) { view.appendChild(el('p', { class: 'empty', text: 'No bodyweight logged yet. There is a box under the note on Today.' })); return; }
+      var lo = bpts.reduce(function (a, p) { return p.bw < a.bw ? p : a; }, bpts[0]);
+      view.appendChild(el('div', { class: 'stats' }, [
+        stat(fmtNum(bpts[bpts.length - 1].bw) + ' ' + unit(), 'latest'), stat(fmtNum(lo.bw) + ' ' + unit(), 'lowest'), stat(bpts.length, 'entries')
+      ]));
+      view.appendChild(el('h2', { text: 'Bodyweight (' + unit() + ')' }));
+      view.appendChild(el('div', { class: 'card' }, [lineChart(bpts, 'bw', unit())]));
+      return;
+    }
 
     var ex = exById(state.progressExerciseId);
     var pts = seriesFor(workouts, ex);
@@ -924,6 +1024,13 @@
 
   /* Android share sheet (Drive, email, ...) when available, otherwise a download. */
   async function shareOrDownload(text, type, name, title) {
+    if (nativeFs && nativeShare) {
+      try {
+        var res = await nativeFs.writeFile({ path: name, data: text, directory: 'CACHE', encoding: 'utf8' });
+        await nativeShare.share({ title: title, files: [res.uri] });
+        return;
+      } catch (e) { if (e && /cancel/i.test(e.message || '')) return; /* else fall through */ }
+    }
     var blob = new Blob([text], { type: type });
     var file = new File([blob], name, { type: type });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -959,11 +1066,19 @@
     barInp.addEventListener('change', function () { if (Number(barInp.value) > 0) setSetting('bar', Number(barInp.value)); });
     var platesInp = el('input', { type: 'text', value: st.plates.join(', ') });
     platesInp.addEventListener('change', function () {
-      var list = platesInp.value.split(/[,\s]+/).map(Number).filter(function (n) { return n > 0; }).sort(function (a, b) { return b - a; });
-      if (list.length) setSetting('plates', list);
+      var seen = {};
+      var list = platesInp.value.split(/[,\s]+/).map(Number)
+        .filter(function (n) { return isFinite(n) && n > 0 && n <= 50 && !seen[n] && (seen[n] = true); })
+        .sort(function (a, b) { return b - a; });
+      if (!list.length) { platesInp.value = st.plates.join(', '); toast('Enter plate weights, e.g. 20, 10, 5'); return; }
+      platesInp.value = list.join(', ');
+      setSetting('plates', list);
     });
     eq.appendChild(el('label', { class: 'field', text: 'Bar weight (' + unit() + ')' }, [barInp]));
     eq.appendChild(el('label', { class: 'field', text: 'Plates you own (one side, comma separated)' }, [platesInp]));
+    eq.appendChild(el('button', { class: 'btn btn-sm', text: 'Reset to ' + S.DEFAULT_SETTINGS.plates.join(', '), onclick: async function () {
+      await setSetting('plates', S.DEFAULT_SETTINGS.plates.slice()); platesInp.value = st.plates.join(', ');
+    } }));
     var wuStep = el('input', { type: 'number', inputmode: 'decimal', step: 'any', value: st.warmupStep });
     wuStep.addEventListener('change', function () { if (Number(wuStep.value) > 0) setSetting('warmupStep', Number(wuStep.value)); });
     eq.appendChild(el('label', { class: 'field', text: 'Round warmup weights to the nearest (' + unit() + ')' }, [wuStep]));
@@ -996,7 +1111,7 @@
     awakeLabel.appendChild(awakeBox);
     awakeLabel.appendChild(document.createTextNode(' Keep the screen on while the Today tab is open'));
     rt.appendChild(awakeLabel);
-    if (!('wakeLock' in navigator)) rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'This browser does not support keeping the screen on.' }));
+    if (!canKeepAwake) rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'This browser does not support keeping the screen on.' }));
     view.appendChild(rt);
 
     // Exercises
@@ -1059,7 +1174,13 @@
     var unitsCard = el('div', { class: 'card stack' });
     var unitSel = el('select', { 'aria-label': 'Weight unit' }, [el('option', { value: 'kg', text: 'Kilograms (kg)' }), el('option', { value: 'lb', text: 'Pounds (lb)' })]);
     unitSel.value = st.unit;
-    unitSel.addEventListener('change', async function () { await setSetting('unit', unitSel.value); unitBadge.textContent = st.unit; });
+    unitSel.addEventListener('change', async function () {
+      var was = st.unit;
+      await setSetting('unit', unitSel.value); unitBadge.textContent = st.unit;
+      /* Keep the rounding step sensible if it was still the default for the old unit. */
+      if (was === 'kg' && st.unit === 'lb' && st.warmupStep === 2.5) await setSetting('warmupStep', 5);
+      if (was === 'lb' && st.unit === 'kg' && st.warmupStep === 5) await setSetting('warmupStep', 2.5);
+    });
     var distSel = el('select', { 'aria-label': 'Distance unit' }, [el('option', { value: 'km', text: 'Kilometres (km)' }), el('option', { value: 'mi', text: 'Miles (mi)' })]);
     distSel.value = st.distanceUnit;
     distSel.addEventListener('change', function () { setSetting('distanceUnit', distSel.value); });
@@ -1092,6 +1213,11 @@
     backup.appendChild(fileInp);
     backup.appendChild(el('button', { class: 'btn btn-block', text: 'Import JSON', onclick: function () { fileInp.click(); } }));
     view.appendChild(backup);
+
+    view.appendChild(el('h2', { text: 'About' }));
+    view.appendChild(el('div', { class: 'card' }, [
+      el('p', { class: 'muted small', style: 'margin:0', text: 'Workout Log build ' + (window.APP_BUILD || 'dev') + (native ? ' (Android app)' : ' (browser)') })
+    ]));
 
     view.appendChild(el('h2', { text: 'Danger zone' }));
     view.appendChild(el('div', { class: 'card' }, [

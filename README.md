@@ -50,12 +50,13 @@ warmup and working. Warmups are excluded from progress charts and from progressi
 
 Barbell lifts show the plates per side. Bar weight and the plates you own are in Settings.
 
-A rest timer starts each time you enter reps for a set and dings at 90 s and again at
-180 s (both adjustable). In the Android app the dings are notifications scheduled with
+A rest timer starts when you log reps on a working set of a programme lift (not after
+warmups, not for accessories, and not when you correct a number) and dings at 90 s and
+again at 180 s (both adjustable). In the Android app the dings are notifications scheduled with
 Android's alarm system, so they fire with the screen locked or the app in the
 background; logging the next set cancels any pending ones. While the Today tab is open
-the app also holds a screen wake lock so the phone does not lock mid-rest (toggle in
-Settings).
+the app also keeps the screen on so the phone does not lock mid-rest (toggle in
+Settings; the KeepAwake plugin in the APK, the Wake Lock API in the browser).
 
 When you are done, **Finish workout** at the bottom of Today stops the timer and locks
 the day into a summary card; **Reopen workout** brings the editor back. Finished
@@ -65,20 +66,26 @@ workouts show a tick in History, where they can also be marked finished or unfin
 
 - **Today** — choose a lifting day, or skip that and just add accessories or cardio.
   Accessories are freeform: `+ Set` copies the previous set. Cardio takes minutes,
-  distance, speed and incline, plus a "warmup before lifting" tick.
-- **History** — every workout, newest first. Tap one to edit or delete it. Add a past date
-  with the date picker at the top.
+  distance, speed and incline, plus a "warmup before lifting" tick. Each exercise card
+  has a sticky note (seat height, grip) that shows every time; programme lifts show what
+  each rep count on the last set means for next time. Bodyweight is an optional box
+  under the note.
+- **History** — every workout, newest first, grouped by week, month or all time with
+  sessions, sets, volume and cardio minutes per group. Tap one to edit or delete it. Add
+  a past date with the date picker at the top.
 - **Progress** — programme lifts: working weight, reps on the 5+ set, and estimated 1RM
   over time. Accessories: best set and volume. Cardio: distance, speed and minutes, with
-  warmup sessions hidden by default.
+  warmup sessions hidden by default. Bodyweight is its own entry in the list. Charts are
+  spaced by date.
 - **Settings** — plate calculator, bar and plates, warmup rounding, rest timer, exercises
   (add, rename, reorder, archive, set increment), units, export JSON or CSV, import JSON,
   delete all data.
 
 ## Getting the data onto a laptop
 
-Settings → Backup has two exports. Both open the Android share sheet, so you can send
-the file straight to Google Drive, email or anywhere else:
+Settings → Backup has two exports. In the APK they are written to the app cache and
+handed to the Android share sheet (Filesystem and Share plugins), so you can send the
+file straight to Google Drive, email or anywhere else; the browser version downloads:
 
 - **Export CSV** — one row per set (or per cardio session) with date, exercise, weight,
   reps, warmup flag, target and note. Open it in Google Sheets or Excel.
@@ -95,6 +102,7 @@ www/style.css             mobile-first styles
 www/store.js              IndexedDB store: exercises, workouts, settings, export/import
 www/app.js                the four screens, rest timer, native notification bridge
 www/sw.js                 service worker for the browser version (bump CACHE on changes)
+www/build.js              build number shown in Settings → About; CI overwrites it
 www/manifest.webmanifest  PWA manifest
 capacitor.config.json     app id, name, web dir
 android/                  Capacitor Android project (committed; CI builds it)
@@ -113,9 +121,9 @@ server (`python3 -m http.server -d www`). Regenerate icons with
 ## Data shape
 
 ```
-exercise  { id, key?, name, type: "weights" | "cardio", order, archived,
+exercise  { id, key?, name, note?, type: "weights" | "cardio", order, archived,
             program, scheme: "3x5+" | "1x5+", increment, barbell }
-workout   { id, date: "YYYY-MM-DD", dayKey, note, finishedAt?, entries: [entry] }
+workout   { id, date: "YYYY-MM-DD", dayKey, note, finishedAt?, bodyweight?, entries: [entry] }
 entry     { id, exerciseId, target, sets: [{ weight, reps, warmup? }] }            // weights
           { id, exerciseId, cardio: { minutes, distance, speed, incline, warmup? } }  // cardio
 ```

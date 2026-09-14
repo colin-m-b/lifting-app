@@ -23,6 +23,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the build number into the web app
+        run: echo "window.APP_BUILD = 'web ${{ github.run_number }}';" > www/build.js
       - uses: actions/configure-pages@v5
         with:
           enablement: true

@@ -29,6 +29,9 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
+      - name: Stamp the build number into the web app
+        run: echo "window.APP_BUILD = '1.0.${{ github.run_number }}';" > www/build.js
+
       - name: Copy web assets into the Android project
         run: npx cap sync android
 

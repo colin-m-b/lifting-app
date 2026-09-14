@@ -131,6 +131,7 @@
       barbell: !!e.barbell
     };
     if (e.key) out.key = String(e.key);
+    if (e.note) out.note = String(e.note);
     if (out.program) {
       out.scheme = e.scheme === '1x5+' ? '1x5+' : '3x5+';
       out.increment = num(e.increment) || 2.5;
@@ -168,6 +169,7 @@
       dayKey: w.dayKey || null,
       entries: Array.isArray(w.entries) ? w.entries.map(normalizeEntry) : [],
       finishedAt: w.finishedAt ? String(w.finishedAt) : null,
+      bodyweight: num(w.bodyweight),
       createdAt: w.createdAt || now(),
       updatedAt: w.updatedAt || now()
     };
@@ -265,13 +267,13 @@
         return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
       }
       var rows = [['date', 'exercise', 'type', 'set', 'warmup', 'weight_' + settings.unit, 'reps',
-        'minutes', 'distance_' + settings.distanceUnit, 'speed', 'incline', 'target', 'finished', 'note']];
+        'minutes', 'distance_' + settings.distanceUnit, 'speed', 'incline', 'target', 'finished', 'bodyweight', 'note']];
       var workouts = await this.listWorkouts();
       workouts.slice().reverse().forEach(function (w) {
         w.entries.forEach(function (en) {
           var ex = byId[en.exerciseId] || { name: '(deleted exercise)', type: 'weights' };
           var common = [w.date, ex.name, ex.type];
-          var tail = [en.target, w.finishedAt ? 'yes' : '', w.note];
+          var tail = [en.target, w.finishedAt ? 'yes' : '', w.bodyweight, w.note];
           if (en.cardio) {
             var c = en.cardio;
             rows.push(common.concat([1, c.warmup ? 'yes' : '', '', '', c.minutes, c.distance, c.speed, c.incline], tail));
