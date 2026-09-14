@@ -51,7 +51,8 @@ warmup and working. Warmups are excluded from progress charts and from progressi
 Barbell lifts show the plates per side. Bar weight and the plates you own are in Settings.
 
 A rest timer starts when you log reps on a working set of a programme lift (not after
-warmups, not for accessories, and not when you correct a number) and dings at 90 s and
+warmups, not for accessories, and not when you correct a number); the Rest button in the
+header starts it by hand at any other time. It dings at 90 s and
 again at 180 s (both adjustable). In the Android app the dings are notifications scheduled with
 Android's alarm system, so they fire with the screen locked or the app in the
 background; logging the next set cancels any pending ones. While the Today tab is open

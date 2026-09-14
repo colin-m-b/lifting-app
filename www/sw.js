@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Bump CACHE when files change. */
-var CACHE = 'workout-log-v6';
+var CACHE = 'workout-log-v7';
 var FILES = [
   './',
   './index.html',

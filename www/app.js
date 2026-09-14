@@ -349,6 +349,8 @@
     if (s >= r2 && !timer.dinged.two) { timer.dinged.two = true; timerBar.classList.add('is-over'); ding(2); }
   }
   document.getElementById('timer-restart').addEventListener('click', startRest);
+  var restStartBtn = document.getElementById('rest-start');
+  restStartBtn.addEventListener('click', startRest);
   document.getElementById('timer-stop').addEventListener('click', stopRest);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tickRest(); });
 
@@ -1096,8 +1098,8 @@
       el('label', { class: 'field', text: 'Second ding (seconds)' }, [r2])
     ]));
     rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: native
-      ? 'The timer starts when you enter reps for a set. Android fires the dings as notifications, so they sound even with the screen locked. If they arrive late, set this app to "Unrestricted" under battery settings.'
-      : 'The timer starts when you enter reps for a set. In the browser the ding only plays while the app is on screen; the Android app version sounds with the screen locked.' }));
+      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. Android fires the dings as notifications, so they sound even with the screen locked. If they arrive late, set this app to "Unrestricted" under battery settings.'
+      : 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. In the browser the ding only plays while the app is on screen; the Android app version sounds with the screen locked.' }));
     rt.appendChild(el('button', { class: 'btn btn-sm', text: native ? 'Test notification (5 s)' : 'Test sound', onclick: async function () {
       if (!native) { unlockAudio(); ding(1); return; }
       await nativeSetup();
@@ -1243,6 +1245,7 @@
 
   function render() {
     document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('is-active', b.dataset.tab === state.tab); });
+    restStartBtn.hidden = state.tab !== 'today';
     syncWakeLock();
     return renderers[state.tab]().catch(function (e) {
       view.innerHTML = '';
