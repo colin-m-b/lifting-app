@@ -161,10 +161,16 @@
     return { weight: roundTo(w * 0.9, step), why: amrap.reps + ' reps: deload 10%' };
   }
 
+  /* Warmup weights are rounded to this step (Settings), not to the smallest plate. */
+  function warmupStep() {
+    var v = Number(state.settings.warmupStep);
+    return v > 0 ? v : 2.5;
+  }
+
   function buildSets(ex, target) {
     var sets = [];
     var bar = state.settings.bar;
-    var step = ex.barbell ? barResolution() : 1;
+    var step = warmupStep();
     var ramp = ex.barbell ? WARMUP_BARBELL : WARMUP_MACHINE;
     var seen = {};
     ramp.forEach(function (r) {
@@ -234,6 +240,7 @@
     return null;
   })();
   var nativeReady = false;
+  var REST_CHANNEL = 'rest-v2';
 
   async function nativeSetup() {
     if (!native || nativeReady) return;
@@ -241,14 +248,17 @@
       var perm = await native.checkPermissions();
       if (perm.display !== 'granted') perm = await native.requestPermissions();
       if (perm.display !== 'granted') return;
+      /* Android keeps a channel's settings from the first time it is created, so a
+         new id is the only way to fix an installed silent channel. The plugin reads
+         `sound` as a res/raw file name; leaving it out gives the system default tone. */
+      try { await native.deleteChannel({ id: 'rest' }); } catch (e) { /* never existed */ }
       await native.createChannel({
-        id: 'rest',
+        id: REST_CHANNEL,
         name: 'Rest timer',
         description: 'Dings when a rest period is over',
         importance: 5,
         visibility: 1,
-        vibration: true,
-        sound: 'default'
+        vibration: true
       });
       nativeReady = true;
     } catch (e) { /* stay silent */ }
@@ -262,8 +272,8 @@
     try {
       await native.cancel({ notifications: [{ id: 1 }, { id: 2 }] });
       await native.schedule({ notifications: [
-        { id: 1, channelId: 'rest', title: 'Rest over', body: r1 + ' s. Next set.', schedule: { at: new Date(startedAt + r1 * 1000), allowWhileIdle: true } },
-        { id: 2, channelId: 'rest', title: 'Long rest', body: r2 + ' s. Get back on it.', schedule: { at: new Date(startedAt + r2 * 1000), allowWhileIdle: true } }
+        { id: 1, channelId: REST_CHANNEL, title: 'Rest over', body: r1 + ' s. Next set.', schedule: { at: new Date(startedAt + r1 * 1000), allowWhileIdle: true } },
+        { id: 2, channelId: REST_CHANNEL, title: 'Long rest', body: r2 + ' s. Get back on it.', schedule: { at: new Date(startedAt + r2 * 1000), allowWhileIdle: true } }
       ] });
     } catch (e) { /* ignore */ }
   }
@@ -289,7 +299,9 @@
   document.addEventListener('click', unlockAudio);
 
   function ding(times) {
-    if (native) return;
+    /* In the APK the scheduled notification is the ding; only fall back to the
+       in-app sound when notifications were refused. */
+    if (native && nativeReady) return;
     try { if (navigator.vibrate) navigator.vibrate(times === 2 ? [200, 100, 200, 100, 200] : [200, 100, 200]); } catch (e) { /* ignore */ }
     if (!audioCtx) return;
     var t = audioCtx.currentTime;
@@ -615,7 +627,7 @@
       note.addEventListener('input', function () { workout.note = note.value; save(); });
       root.appendChild(note);
 
-      if (opts.footer) root.appendChild(opts.footer());
+      if (opts.footer) { var foot = opts.footer(); if (foot) root.appendChild(foot); }
     }
 
     rerender();
@@ -633,7 +645,44 @@
 
     view.innerHTML = '';
     view.appendChild(el('p', { class: 'muted small', text: fmtDate(date, true) }));
-    view.appendChild(renderWorkoutEditor(workout, workouts, { live: true }));
+
+    if (workout.finishedAt) {
+      view.appendChild(finishedCard(workout, function () {
+        workout.finishedAt = null;
+        S.saveWorkout(workout).then(render);
+      }));
+      return;
+    }
+
+    view.appendChild(renderWorkoutEditor(workout, workouts, { live: true, footer: function () {
+      if (!workout.entries.length) return null;
+      return el('div', { class: 'row', style: 'margin-top:16px' }, [
+        el('button', { class: 'btn btn-primary btn-block', text: 'Finish workout', onclick: function () {
+          var blank = workout.entries.filter(function (en) { return summariseEntry(en) === 'no sets' || summariseEntry(en) === 'no data'; });
+          if (blank.length && !confirm(blank.length + (blank.length === 1 ? ' exercise has' : ' exercises have') + ' nothing logged. Finish anyway?')) return;
+          workout.finishedAt = new Date().toISOString();
+          stopRest();
+          S.saveWorkout(workout).then(function () { toast('Nice work'); render(); });
+        } })
+      ]);
+    } }));
+  }
+
+  /* Read-only summary shown on Today once the workout is finished. */
+  function finishedCard(workout, onReopen) {
+    var card = el('div', { class: 'card is-done' });
+    var when = new Date(workout.finishedAt);
+    card.appendChild(el('div', { class: 'card-head' }, [
+      el('h3', { text: '✓ Finished' }),
+      el('span', { class: 'muted small', text: isNaN(when) ? '' : when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) })
+    ]));
+    if (workout.dayKey) card.appendChild(el('div', { class: 'hint', text: dayLabel(workout.dayKey) }));
+    workout.entries.forEach(function (en) {
+      card.appendChild(el('div', { class: 'hist-line' }, [el('b', { text: exById(en.exerciseId).name + ' ' }), summariseEntry(en)]));
+    });
+    if (workout.note) card.appendChild(el('div', { class: 'hist-line', style: 'margin-top:6px;font-style:italic', text: workout.note }));
+    card.appendChild(el('button', { class: 'btn btn-block', style: 'margin-top:12px', text: 'Reopen workout', onclick: onReopen }));
+    return card;
   }
 
   // ---- History ----
@@ -676,7 +725,7 @@
         state.openHistoryId = open ? null : w.id;
         render();
       } }, [
-        el('h3', { text: fmtDate(w.date) }),
+        el('h3', { text: fmtDate(w.date) + (w.finishedAt ? ' ✓' : '') }),
         el('span', { class: 'muted small', text: label })
       ]));
 
@@ -687,6 +736,11 @@
           footer: function () {
             return el('div', { class: 'row', style: 'margin-top:12px' }, [
               el('button', { class: 'btn btn-ghost grow', text: 'Close', onclick: function () { state.openHistoryId = null; render(); } }),
+              el('button', { class: 'btn btn-ghost btn-sm', text: w.finishedAt ? 'Unfinish' : 'Mark finished', onclick: async function () {
+                w.finishedAt = w.finishedAt ? null : new Date().toISOString();
+                await S.saveWorkout(w);
+                render();
+              } }),
               el('button', { class: 'btn btn-ghost btn-danger', text: 'Delete workout', onclick: async function () {
                 if (!confirm('Delete the workout on ' + fmtDate(w.date) + '?')) return;
                 await S.deleteWorkout(w.id);
@@ -868,6 +922,17 @@
 
   // ---- Settings ----
 
+  /* Android share sheet (Drive, email, ...) when available, otherwise a download. */
+  async function shareOrDownload(text, type, name, title) {
+    var blob = new Blob([text], { type: type });
+    var file = new File([blob], name, { type: type });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: title }); return; } catch (e) { /* fall through */ }
+    }
+    var a = el('a', { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   async function renderSettings() {
     titleEl.textContent = 'Settings';
     view.innerHTML = '';
@@ -899,6 +964,9 @@
     });
     eq.appendChild(el('label', { class: 'field', text: 'Bar weight (' + unit() + ')' }, [barInp]));
     eq.appendChild(el('label', { class: 'field', text: 'Plates you own (one side, comma separated)' }, [platesInp]));
+    var wuStep = el('input', { type: 'number', inputmode: 'decimal', step: 'any', value: st.warmupStep });
+    wuStep.addEventListener('change', function () { if (Number(wuStep.value) > 0) setSetting('warmupStep', Number(wuStep.value)); });
+    eq.appendChild(el('label', { class: 'field', text: 'Round warmup weights to the nearest (' + unit() + ')' }, [wuStep]));
     view.appendChild(eq);
 
     // Rest timer
@@ -919,7 +987,7 @@
       if (!native) { unlockAudio(); ding(1); return; }
       await nativeSetup();
       if (!nativeReady) { alert('Notifications are blocked for this app. Allow them in Android settings.'); return; }
-      try { await native.schedule({ notifications: [{ id: 99, channelId: 'rest', title: 'Rest over', body: 'Test ding', schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] }); toast('Lock the screen; ding in 5 s'); } catch (e) { alert('Could not schedule: ' + e.message); }
+      try { await native.schedule({ notifications: [{ id: 99, channelId: REST_CHANNEL, title: 'Rest over', body: 'Test ding', schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] }); toast('Lock the screen; ding in 5 s'); } catch (e) { alert('Could not schedule: ' + e.message); }
     } }));
     var awakeLabel = el('label', { class: 'check', style: 'margin-top:10px' });
     var awakeBox = el('input', { type: 'checkbox' });
@@ -1003,16 +1071,12 @@
     // Backup
     view.appendChild(el('h2', { text: 'Backup' }));
     var backup = el('div', { class: 'card stack' });
-    backup.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'Everything is stored on this phone only. Export a JSON file now and then and keep it somewhere safe.' }));
-    backup.appendChild(el('button', { class: 'btn btn-block', text: 'Export JSON', onclick: async function () {
-      var json = await S.exportJSON();
-      var blob = new Blob([json], { type: 'application/json' });
-      var name = 'workout-log-' + todayISO() + '.json';
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: 'application/json' })] })) {
-        try { await navigator.share({ files: [new File([blob], name, { type: 'application/json' })], title: 'Workout Log export' }); return; } catch (e) { /* fall through */ }
-      }
-      var a = el('a', { href: URL.createObjectURL(blob), download: name });
-      document.body.appendChild(a); a.click(); a.remove();
+    backup.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: 'Everything is stored on this phone only. JSON is the full backup and can be imported again. CSV is one row per set, for opening in Google Sheets or Excel; share it to Drive to see it on a laptop.' }));
+    backup.appendChild(el('button', { class: 'btn btn-block', text: 'Export JSON (full backup)', onclick: async function () {
+      await shareOrDownload(await S.exportJSON(), 'application/json', 'workout-log-' + todayISO() + '.json', 'Workout Log export');
+    } }));
+    backup.appendChild(el('button', { class: 'btn btn-block', text: 'Export CSV (for Sheets / Excel)', onclick: async function () {
+      await shareOrDownload(await S.exportCSV(), 'text/csv', 'workout-log-' + todayISO() + '.csv', 'Workout Log CSV');
     } }));
     var fileInp = el('input', { type: 'file', accept: 'application/json,.json', style: 'display:none' });
     fileInp.addEventListener('change', async function () {

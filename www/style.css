@@ -309,7 +309,12 @@ label.field input, label.field select { margin-top: 4px; }
   font-weight: 700;
   font-size: 18px;
 }
+/* `hidden` alone loses to display:flex, which left the bar on screen after × */
+.timer[hidden] { display: none; }
 .timer.is-due { background: var(--accent); color: var(--accent-ink); }
 .timer.is-due .btn { border-color: var(--accent-ink); color: var(--accent-ink); background: transparent; }
 .timer.is-over { background: var(--danger); color: #fff; }
 .timer.is-over .btn { border-color: #fff; color: #fff; background: transparent; }
+
+.card.is-done { border-color: var(--accent); }
+.card.is-done h3 { color: var(--accent); }

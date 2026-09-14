@@ -2,8 +2,8 @@
 
 A small offline app for logging GreySkull LP lifts, accessories and cardio on an Android
 phone. Plain HTML, CSS and JavaScript in `www/`, wrapped as an Android APK with Capacitor.
-No accounts, no server, no analytics. All data stays on the phone (IndexedDB); JSON
-export is the only backup route.
+No accounts, no server, no analytics. All data stays on the phone (IndexedDB). JSON
+export is the backup route; CSV export is for reading the log in a spreadsheet.
 
 ## Install the Android app
 
@@ -45,7 +45,7 @@ more adds double, under 5 drops the weight by 10 percent. Increments default to 
 for presses and 5 kg for squat and deadlift; edit them per lift in Settings.
 
 Picking a day builds each lift's sets: a warmup ramp (bar, 50%, 70%, 90%) rounded to
-what your plates can make, then the working sets. Tap a set's label to flip it between
+the nearest 2.5 kg (adjustable in Settings), then the working sets. Tap a set's label to flip it between
 warmup and working. Warmups are excluded from progress charts and from progression.
 
 Barbell lifts show the plates per side. Bar weight and the plates you own are in Settings.
@@ -57,6 +57,10 @@ background; logging the next set cancels any pending ones. While the Today tab i
 the app also holds a screen wake lock so the phone does not lock mid-rest (toggle in
 Settings).
 
+When you are done, **Finish workout** at the bottom of Today stops the timer and locks
+the day into a summary card; **Reopen workout** brings the editor back. Finished
+workouts show a tick in History, where they can also be marked finished or unfinished.
+
 ## Screens
 
 - **Today** — choose a lifting day, or skip that and just add accessories or cardio.
@@ -67,8 +71,21 @@ Settings).
 - **Progress** — programme lifts: working weight, reps on the 5+ set, and estimated 1RM
   over time. Accessories: best set and volume. Cardio: distance, speed and minutes, with
   warmup sessions hidden by default.
-- **Settings** — plate calculator, bar and plates, rest timer, exercises (add, rename,
-  reorder, archive, set increment), units, export and import JSON, delete all data.
+- **Settings** — plate calculator, bar and plates, warmup rounding, rest timer, exercises
+  (add, rename, reorder, archive, set increment), units, export JSON or CSV, import JSON,
+  delete all data.
+
+## Getting the data onto a laptop
+
+Settings → Backup has two exports. Both open the Android share sheet, so you can send
+the file straight to Google Drive, email or anywhere else:
+
+- **Export CSV** — one row per set (or per cardio session) with date, exercise, weight,
+  reps, warmup flag, target and note. Open it in Google Sheets or Excel.
+- **Export JSON** — the complete backup, including exercises and settings. This is the
+  file **Import JSON** reads back, so keep one somewhere safe.
+
+Nothing syncs on its own; there is no server. Export when you want a fresh copy.
 
 ## Files
 
@@ -98,7 +115,7 @@ server (`python3 -m http.server -d www`). Regenerate icons with
 ```
 exercise  { id, key?, name, type: "weights" | "cardio", order, archived,
             program, scheme: "3x5+" | "1x5+", increment, barbell }
-workout   { id, date: "YYYY-MM-DD", dayKey, note, entries: [entry] }
+workout   { id, date: "YYYY-MM-DD", dayKey, note, finishedAt?, entries: [entry] }
 entry     { id, exerciseId, target, sets: [{ weight, reps, warmup? }] }            // weights
           { id, exerciseId, cardio: { minutes, distance, speed, incline, warmup? } }  // cardio
 ```

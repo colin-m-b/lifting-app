@@ -28,11 +28,15 @@
     { name: 'Elliptical', type: 'cardio' }
   ];
 
+  /* Plate list shipped by the first release; installs still on it are moved to the new default. */
+  var OLD_DEFAULT_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25, 1, 0.5];
+
   var DEFAULT_SETTINGS = {
     unit: 'kg',
     distanceUnit: 'km',
     bar: 20,
-    plates: [25, 20, 15, 10, 5, 2.5, 1.25, 1, 0.5],
+    plates: [20, 15, 10, 5, 2.5, 1.25, 1, 0.5],
+    warmupStep: 2.5,
     restSeconds: 90,
     restSeconds2: 180,
     keepAwake: true
@@ -163,6 +167,7 @@
       note: String(w.note == null ? '' : w.note),
       dayKey: w.dayKey || null,
       entries: Array.isArray(w.entries) ? w.entries.map(normalizeEntry) : [],
+      finishedAt: w.finishedAt ? String(w.finishedAt) : null,
       createdAt: w.createdAt || now(),
       updatedAt: w.updatedAt || now()
     };
@@ -176,6 +181,10 @@
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
 
     async init() {
+      var plates = await this.getSetting('plates', null);
+      if (Array.isArray(plates) && plates.join(',') === OLD_DEFAULT_PLATES.join(',')) {
+        await this.setSetting('plates', DEFAULT_SETTINGS.plates.slice());
+      }
       var ex = await getAll('exercises');
       if (ex.length === 0) {
         for (var i = 0; i < DEFAULT_EXERCISES.length; i++) {
@@ -242,6 +251,38 @@
         workouts: await this.listWorkouts(),
         settings: settings
       }, null, 2);
+    },
+
+    /* One row per set (or per cardio session), oldest first. Opens in Sheets or Excel. */
+    async exportCSV() {
+      var exercises = await this.listExercises();
+      var byId = {};
+      exercises.forEach(function (e) { byId[e.id] = e; });
+      var settings = await this.getSettings();
+      function cell(v) {
+        if (v == null) return '';
+        var t = String(v);
+        return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+      }
+      var rows = [['date', 'exercise', 'type', 'set', 'warmup', 'weight_' + settings.unit, 'reps',
+        'minutes', 'distance_' + settings.distanceUnit, 'speed', 'incline', 'target', 'finished', 'note']];
+      var workouts = await this.listWorkouts();
+      workouts.slice().reverse().forEach(function (w) {
+        w.entries.forEach(function (en) {
+          var ex = byId[en.exerciseId] || { name: '(deleted exercise)', type: 'weights' };
+          var common = [w.date, ex.name, ex.type];
+          var tail = [en.target, w.finishedAt ? 'yes' : '', w.note];
+          if (en.cardio) {
+            var c = en.cardio;
+            rows.push(common.concat([1, c.warmup ? 'yes' : '', '', '', c.minutes, c.distance, c.speed, c.incline], tail));
+            return;
+          }
+          (en.sets || []).forEach(function (st, i) {
+            rows.push(common.concat([i + 1, st.warmup ? 'yes' : '', st.weight, st.reps, '', '', '', ''], tail));
+          });
+        });
+      });
+      return rows.map(function (r) { return r.map(cell).join(','); }).join('\r\n') + '\r\n';
     },
 
     /* Merge import: existing records with the same id are overwritten,
