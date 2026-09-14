@@ -230,8 +230,10 @@
   }
 
   // ---- native bridge (Capacitor Android wrapper) ----
-  /* In the APK, Android itself fires the rest alarms as notifications, so they
-     sound with the screen locked. In a browser this is all a no-op. */
+  /* In the APK the rest dings are Android alarms: RestAlarmPlugin schedules them and
+     RestAlarmReceiver plays the chime on the alarm stream, so they are heard with the
+     screen off, on vibrate, and over music in earbuds. Older APKs fall back to
+     notifications, which the ringer can silence. In a browser this is all a no-op. */
 
   var plugins = (function () {
     try {
@@ -244,12 +246,20 @@
   var nativeFs = plugins.Filesystem || null;
   var nativeShare = plugins.Share || null;
   var nativeAwake = plugins.KeepAwake || null;
+  var nativeRest = plugins.RestAlarm || null;
   var nativeReady = false;
-  /* Created natively in MainActivity.java with USAGE_ALARM audio attributes, so the
-     ding is heard on vibrate, over music in earbuds and with the screen off. */
+  /* Notification channels, used only on an APK without RestAlarm (build 8 or older). */
   var restChannels = { one: 'rest-alarm', two: 'rest-alarm-long' };
 
+  function soundPath() {
+    if (nativeRest) return 'Android alarm (heard on vibrate, over music, screen off)';
+    if (native && nativeReady) return 'Android notification (follows the ringer)';
+    return 'in-app sound (only while the app is on screen)';
+  }
+
   async function nativeSetup() {
+    /* The alarm plugin plays the chime itself and needs no permission. */
+    if (nativeRest) nativeReady = true;
     if (!native || nativeReady) return;
     try {
       var perm = await native.checkPermissions();
@@ -273,10 +283,14 @@
   }
 
   async function nativeScheduleRest(startedAt) {
+    var r1 = state.settings.restSeconds, r2 = state.settings.restSeconds2;
+    if (nativeRest) {
+      try { await nativeRest.schedule({ at: [startedAt + r1 * 1000, startedAt + r2 * 1000] }); } catch (e) { /* ignore */ }
+      return;
+    }
     if (!native) return;
     await nativeSetup();
     if (!nativeReady) return;
-    var r1 = state.settings.restSeconds, r2 = state.settings.restSeconds2;
     try {
       await native.cancel({ notifications: [{ id: 1 }, { id: 2 }] });
       var list = [
@@ -287,6 +301,10 @@
     } catch (e) { /* ignore */ }
   }
   async function nativeCancelRest() {
+    if (nativeRest) {
+      try { await nativeRest.cancel(); } catch (e) { /* ignore */ }
+      return;
+    }
     if (!native) return;
     try { await native.cancel({ notifications: [{ id: 1 }, { id: 2 }] }); } catch (e) { /* ignore */ }
   }
@@ -307,10 +325,10 @@
   document.addEventListener('touchend', unlockAudio, { passive: true });
   document.addEventListener('click', unlockAudio);
 
-  /* Android plays the ding from the alarm-stream channel whether or not the app is
-     on screen, so the in-app sound is only for the browser and for a phone where
-     notifications were refused. */
+  /* Android plays the ding itself, on screen or not, so the in-app sound is only for
+     the browser and for a phone where the native paths are unavailable. */
   function ding(times) {
+    if (nativeRest) return;
     if (native && nativeReady) return;
     try { if (navigator.vibrate) navigator.vibrate(times === 2 ? [200, 100, 200, 100, 200] : [200, 100, 200]); } catch (e) { /* ignore */ }
     if (!audioCtx) return;
@@ -1105,9 +1123,13 @@
       el('label', { class: 'field', text: 'Second ding (seconds)' }, [r2])
     ]));
     rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: native
-      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. Android plays the ding on the alarm stream, so it is heard on vibrate, over music in earbuds and with the screen off. It follows the alarm volume, not the ringer. If dings arrive late, set this app to "Unrestricted" under battery settings.'
+      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. The ding is an Android alarm played on the alarm stream, so it is heard on vibrate, over music in earbuds and with the screen off, and it follows the alarm volume rather than the ringer. If dings arrive late, set this app to "Unrestricted" under battery settings.'
       : 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. In the browser the ding only plays while the app is on screen; the Android app version sounds with the screen locked.' }));
     async function testDing(delayMs, message) {
+      if (nativeRest) {
+        try { await nativeRest.test({ delayMs: delayMs }); toast(message); } catch (e) { alert('Could not schedule: ' + e.message); }
+        return;
+      }
       if (!native) { unlockAudio(); ding(1); return; }
       await nativeSetup();
       if (!nativeReady) { alert('Notifications are blocked for this app. Allow them in Android settings.'); return; }
@@ -1118,8 +1140,9 @@
     }
     rt.appendChild(el('div', { class: 'row' }, [
       el('button', { class: 'btn btn-sm grow', text: 'Test ding', onclick: function () { testDing(1000, 'Ding in a second'); } }),
-      native ? el('button', { class: 'btn btn-sm grow', text: 'Test with the screen off (5 s)', onclick: function () { testDing(5000, 'Lock the screen; ding in 5 s'); } }) : null
+      (nativeRest || native) ? el('button', { class: 'btn btn-sm grow', text: 'Test with the screen off (5 s)', onclick: function () { testDing(5000, 'Lock the screen; ding in 5 s'); } }) : null
     ]));
+    rt.appendChild(el('p', { class: 'muted small', style: 'margin:6px 0 0', text: 'Ding plays via: ' + soundPath() }));
     var accLabel = el('label', { class: 'check', style: 'margin-top:10px' });
     var accBox = el('input', { type: 'checkbox' });
     accBox.checked = !!st.restAccessories;

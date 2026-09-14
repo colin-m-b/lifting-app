@@ -54,14 +54,15 @@ A rest timer starts when you log reps on a working set of a programme lift (not 
 warmups, not for accessories, and not when you correct a number); the Rest button in the
 header starts it by hand at any other time, and a Settings toggle makes accessory sets
 start it too. It dings at 90 s and
-again at 180 s (both adjustable). In the Android app the dings are notifications
-scheduled with Android's alarm system, so they fire with the screen locked or the app
-in the background; logging the next set cancels any pending ones. Their channels are
-created in `MainActivity.java` with `USAGE_ALARM` audio attributes and a short bundled
-chime (`android/app/src/main/res/raw/`), which is what makes them audible on vibrate,
-over music in earbuds and under Do Not Disturb. They follow the alarm volume. The
-Capacitor plugin cannot set audio attributes, hence the native channel; the browser
-version falls back to a WebAudio beep that only plays while the app is on screen. While the Today tab is open
+again at 180 s (both adjustable). In the Android app each ding is an exact alarm
+scheduled with `AlarmManager`, so it fires with the screen locked or the app in the
+background; logging the next set cancels any pending ones. The alarm plays a short
+bundled chime (`android/app/src/main/res/raw/`) with `MediaPlayer` and `USAGE_ALARM`
+audio attributes, which is what makes it audible on vibrate, over music in earbuds and
+under Do Not Disturb; it follows the alarm volume, not the ringer. A notification
+cannot do this: some phones mute every notification sound in vibrate mode whatever
+the channel says. The browser version falls back to a WebAudio beep that only plays
+while the app is on screen. Settings shows which of the three paths is in use. While the Today tab is open
 the app also keeps the screen on so the phone does not lock mid-rest (toggle in
 Settings; the KeepAwake plugin in the APK, the Wake Lock API in the browser).
 
@@ -113,6 +114,11 @@ www/build.js              build number shown in Settings → About; CI overwrite
 www/manifest.webmanifest  PWA manifest
 capacitor.config.json     app id, name, web dir
 android/                  Capacitor Android project (committed; CI builds it)
+android/app/src/main/java/com/colinmb/liftingapp/
+                          MainActivity (plugin registration, notification channels),
+                          RestAlarmPlugin (schedules the dings with AlarmManager),
+                          RestAlarmReceiver (plays the chime on the alarm stream)
+android/app/src/main/res/raw/  rest timer chimes
 android/app/lifting.keystore  signing key shared by every build
 assets/                   source icons for `npx @capacitor/assets`
 .github/workflows/        build-apk.yml (APK → release "latest"), pages.yml (www → Pages)
