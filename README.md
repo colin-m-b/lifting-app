@@ -54,9 +54,11 @@ A rest timer starts when you log reps on a working set of a programme lift (not 
 warmups, not for accessories, and not when you correct a number); the Rest button in the
 header starts it by hand at any other time, and a Settings toggle makes accessory sets
 start it too. It dings at 90 s and
-again at 180 s (both adjustable). In the Android app the dings are notifications scheduled with
-Android's alarm system, so they fire with the screen locked or the app in the
-background; logging the next set cancels any pending ones. While the Today tab is open
+again at 180 s (both adjustable). While the app is on screen the ding is played by the app
+itself through the media volume, so it sounds in vibrate mode and through headphones.
+When the app goes to the background the remaining dings are handed to Android as
+notifications scheduled with the alarm system (those follow the ringer); coming back
+takes them over again, and logging the next set cancels any pending ones. While the Today tab is open
 the app also keeps the screen on so the phone does not lock mid-rest (toggle in
 Settings; the KeepAwake plugin in the APK, the Wake Lock API in the browser).
 

@@ -276,10 +276,11 @@
     var r1 = state.settings.restSeconds, r2 = state.settings.restSeconds2;
     try {
       await native.cancel({ notifications: [{ id: 1 }, { id: 2 }] });
-      await native.schedule({ notifications: [
+      var list = [
         { id: 1, channelId: REST_CHANNEL, title: 'Rest over', body: r1 + ' s. Next set.', schedule: { at: new Date(startedAt + r1 * 1000), allowWhileIdle: true } },
         { id: 2, channelId: REST_CHANNEL, title: 'Long rest', body: r2 + ' s. Get back on it.', schedule: { at: new Date(startedAt + r2 * 1000), allowWhileIdle: true } }
-      ] });
+      ].filter(function (n) { return n.schedule.at.getTime() > Date.now() + 500; });
+      if (list.length) await native.schedule({ notifications: list });
     } catch (e) { /* ignore */ }
   }
   async function nativeCancelRest() {
@@ -303,10 +304,10 @@
   document.addEventListener('touchend', unlockAudio, { passive: true });
   document.addEventListener('click', unlockAudio);
 
+  /* The in-app ding plays through the media volume, so it sounds in vibrate mode
+     (the notification tone does not) and through headphones. While the app is on
+     screen this is the ding; the notification only covers the background. */
   function ding(times) {
-    /* In the APK the scheduled notification is the ding; only fall back to the
-       in-app sound when notifications were refused. */
-    if (native && nativeReady) return;
     try { if (navigator.vibrate) navigator.vibrate(times === 2 ? [200, 100, 200, 100, 200] : [200, 100, 200]); } catch (e) { /* ignore */ }
     if (!audioCtx) return;
     var t = audioCtx.currentTime;
@@ -316,7 +317,7 @@
       o.type = 'sine';
       o.frequency.value = times === 2 ? 1046 : 880;
       g.gain.setValueAtTime(0.0001, t + i * 0.35);
-      g.gain.exponentialRampToValueAtTime(0.5, t + i * 0.35 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.8, t + i * 0.35 + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.35 + 0.3);
       o.connect(g); g.connect(audioCtx.destination);
       o.start(t + i * 0.35); o.stop(t + i * 0.35 + 0.32);
@@ -332,7 +333,7 @@
     clearInterval(timer.tick);
     timer.tick = setInterval(tickRest, 250);
     tickRest();
-    nativeScheduleRest(timer.startedAt);
+    if (document.hidden) nativeScheduleRest(timer.startedAt);
   }
   function stopRest() {
     clearInterval(timer.tick);
@@ -352,7 +353,19 @@
   var restStartBtn = document.getElementById('rest-start');
   restStartBtn.addEventListener('click', startRest);
   document.getElementById('timer-stop').addEventListener('click', stopRest);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) tickRest(); });
+  /* Hand the dings to Android notifications while the app is in the background,
+     and take them back (without re-dinging what already fired) on return. */
+  document.addEventListener('visibilitychange', function () {
+    if (!timer.startedAt) return;
+    if (document.hidden) { nativeScheduleRest(timer.startedAt); return; }
+    var s = Math.floor((Date.now() - timer.startedAt) / 1000);
+    if (native && nativeReady) {
+      if (s >= state.settings.restSeconds && !timer.dinged.one) { timer.dinged.one = true; timerBar.classList.add('is-due'); }
+      if (s >= state.settings.restSeconds2 && !timer.dinged.two) { timer.dinged.two = true; timerBar.classList.add('is-over'); }
+    }
+    nativeCancelRest();
+    tickRest();
+  });
 
   // ---- wake lock: keep the screen on while a workout is open ----
 
@@ -1100,10 +1113,10 @@
       el('label', { class: 'field', text: 'Second ding (seconds)' }, [r2])
     ]));
     rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: native
-      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. Android fires the dings as notifications, so they sound even with the screen locked. If they arrive late, set this app to "Unrestricted" under battery settings.'
+      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. While the app is on screen the ding plays through the media volume, so it works in vibrate mode and through headphones: turn the media volume up. In the background Android fires it as a notification instead, which follows the ringer. If those arrive late, set this app to "Unrestricted" under battery settings.'
       : 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. In the browser the ding only plays while the app is on screen; the Android app version sounds with the screen locked.' }));
-    rt.appendChild(el('button', { class: 'btn btn-sm', text: native ? 'Test notification (5 s)' : 'Test sound', onclick: async function () {
-      if (!native) { unlockAudio(); ding(1); return; }
+    rt.appendChild(el('button', { class: 'btn btn-sm', text: 'Test sound', onclick: function () { unlockAudio(); ding(1); } }));
+    if (native) rt.appendChild(el('button', { class: 'btn btn-sm', text: 'Test background notification (5 s)', onclick: async function () {
       await nativeSetup();
       if (!nativeReady) { alert('Notifications are blocked for this app. Allow them in Android settings.'); return; }
       try { await native.schedule({ notifications: [{ id: 99, channelId: REST_CHANNEL, title: 'Rest over', body: 'Test ding', schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] }); toast('Lock the screen; ding in 5 s'); } catch (e) { alert('Could not schedule: ' + e.message); }
