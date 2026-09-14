@@ -57,11 +57,12 @@ start it too. It dings at 90 s and
 again at 180 s (both adjustable). In the Android app each ding is an exact alarm
 scheduled with `AlarmManager`, so it fires with the screen locked or the app in the
 background; logging the next set cancels any pending ones. The alarm plays a short
-bundled chime (`android/app/src/main/res/raw/`) with `MediaPlayer` and `USAGE_ALARM`
-audio attributes, which is what makes it audible on vibrate, over music in earbuds and
-under Do Not Disturb; it follows the alarm volume, not the ringer. A notification
-cannot do this: some phones mute every notification sound in vibrate mode whatever
-the channel says. The browser version falls back to a WebAudio beep that only plays
+bundled chime (`android/app/src/main/res/raw/`) with `MediaPlayer`. With a headset
+connected it goes out as media, so it plays in the earbuds alone and ducks the music;
+with no headset it goes out as an alarm, which is louder and mirrored to the speaker.
+Neither stream is silenced by the ringer being on vibrate, and neither is blocked by
+Do Not Disturb. A notification cannot do this: some phones mute every notification
+sound in vibrate mode whatever the channel says. The browser version falls back to a WebAudio beep that only plays
 while the app is on screen. Settings shows which of the three paths is in use. While the Today tab is open
 the app also keeps the screen on so the phone does not lock mid-rest (toggle in
 Settings; the KeepAwake plugin in the APK, the Wake Lock API in the browser).

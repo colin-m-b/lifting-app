@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -17,9 +18,12 @@ import android.os.Vibrator;
 
    Posting a notification is not enough: some phones (Samsung among them) mute
    every notification sound while the ringer is on vibrate, whatever audio
-   attributes the channel carries. Playing the sound here with MediaPlayer and
-   USAGE_ALARM goes out on the alarm stream instead, which vibrate mode does not
-   touch, which mixes over music, and which follows Bluetooth earbuds. */
+   attributes the channel carries. Playing the sound here with MediaPlayer lets us
+   pick the stream instead. The alarm stream survives vibrate mode, but Android
+   deliberately mirrors alarms to the phone speaker so they cannot be missed, which
+   is wrong with earbuds in. So play as media whenever a headset is connected (it
+   goes to the headset alone, ducks the music, and vibrate mode does not silence
+   media either) and keep the alarm stream for the bare phone. */
 public class RestAlarmReceiver extends BroadcastReceiver {
 
     @Override
@@ -52,12 +56,30 @@ public class RestAlarmReceiver extends BroadcastReceiver {
         } catch (Exception e) { /* some phones refuse; the sound is the point */ }
     }
 
+    /* Anything worn on the head: the ding belongs there and nowhere else. */
+    private boolean headsetConnected(AudioManager audio) {
+        if (audio == null) return false;
+        try {
+            for (AudioDeviceInfo device : audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                int type = device.getType();
+                if (type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                    || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                    || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                    || type == AudioDeviceInfo.TYPE_USB_HEADSET) return true;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET) return true;
+            }
+        } catch (Exception e) { /* fall back to the alarm stream */ }
+        return false;
+    }
+
     private void play(Context context, int which) {
+        final AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         AudioAttributes attributes = new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setUsage(headsetConnected(audio) ? AudioAttributes.USAGE_MEDIA : AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build();
-        final AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
         /* Duck whatever is playing rather than fighting it. */
         final AudioFocusRequest focus;

@@ -252,7 +252,7 @@
   var restChannels = { one: 'rest-alarm', two: 'rest-alarm-long' };
 
   function soundPath() {
-    if (nativeRest) return 'Android alarm (heard on vibrate, over music, screen off)';
+    if (nativeRest) return 'Android alarm — earbuds when connected, otherwise the phone';
     if (native && nativeReady) return 'Android notification (follows the ringer)';
     return 'in-app sound (only while the app is on screen)';
   }
@@ -1123,7 +1123,7 @@
       el('label', { class: 'field', text: 'Second ding (seconds)' }, [r2])
     ]));
     rt.appendChild(el('p', { class: 'muted small', style: 'margin:0', text: native
-      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. The ding is an Android alarm played on the alarm stream, so it is heard on vibrate, over music in earbuds and with the screen off, and it follows the alarm volume rather than the ringer. If dings arrive late, set this app to "Unrestricted" under battery settings.'
+      ? 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. The ding is an Android alarm, heard on vibrate and with the screen off. With earbuds connected it plays in the earbuds only, ducking your music, at the media volume; with no earbuds it uses the alarm stream and the alarm volume. If dings arrive late, set this app to "Unrestricted" under battery settings.'
       : 'The timer starts automatically when you log reps on a working set of a programme lift; the Rest button at the top starts it any other time. In the browser the ding only plays while the app is on screen; the Android app version sounds with the screen locked.' }));
     async function testDing(delayMs, message) {
       if (nativeRest) {
