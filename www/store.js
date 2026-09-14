@@ -39,6 +39,7 @@
     warmupStep: 2.5,
     restSeconds: 90,
     restSeconds2: 180,
+    restAccessories: false,
     keepAwake: true
   };
 

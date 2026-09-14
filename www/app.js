@@ -426,7 +426,7 @@
           el('td', null, [numInput(s, 'reps', { inputmode: 'numeric', step: '1' }, function (wasBlank) {
             /* Rest timer: programme lifts only, working sets only, and only when the
                reps were just logged (correcting a number does not restart it). */
-            if (s.reps != null && opts.live && wasBlank && ex.program && !s.warmup) startRest();
+            if (s.reps != null && opts.live && wasBlank && !s.warmup && (ex.program || state.settings.restAccessories)) startRest();
           })]),
           el('td', { class: 'x' }, [el('button', { class: 'btn btn-ghost btn-icon', text: '×', 'aria-label': 'Remove set', onclick: function () {
             en.sets.splice(i, 1);
@@ -560,6 +560,8 @@
       var actions = el('div', { class: 'row' });
       actions.appendChild(el('button', { class: 'btn btn-primary grow', text: '+ Set', onclick: function () {
         var prev = en.sets[en.sets.length - 1] || (last && last.entry.sets && workingSets(last.entry)[0]) || { weight: null, reps: null };
+        /* Accessory sets come pre-filled, so "+ Set" is the moment a set was finished. */
+        if (opts.live && state.settings.restAccessories && en.sets.length) startRest();
         en.sets.push({ weight: prev.weight, reps: prev.reps });
         saveNow().then(function () {
           rerender();
@@ -1106,6 +1108,13 @@
       if (!nativeReady) { alert('Notifications are blocked for this app. Allow them in Android settings.'); return; }
       try { await native.schedule({ notifications: [{ id: 99, channelId: REST_CHANNEL, title: 'Rest over', body: 'Test ding', schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] }); toast('Lock the screen; ding in 5 s'); } catch (e) { alert('Could not schedule: ' + e.message); }
     } }));
+    var accLabel = el('label', { class: 'check', style: 'margin-top:10px' });
+    var accBox = el('input', { type: 'checkbox' });
+    accBox.checked = !!st.restAccessories;
+    accBox.addEventListener('change', function () { setSetting('restAccessories', accBox.checked); });
+    accLabel.appendChild(accBox);
+    accLabel.appendChild(document.createTextNode(' Also start the timer after accessory sets'));
+    rt.appendChild(accLabel);
     var awakeLabel = el('label', { class: 'check', style: 'margin-top:10px' });
     var awakeBox = el('input', { type: 'checkbox' });
     awakeBox.checked = !!st.keepAwake;
