@@ -6,7 +6,6 @@
   var S = window.WorkoutStore;
   var view = document.getElementById('view');
   var titleEl = document.getElementById('title');
-  var unitBadge = document.getElementById('unit-badge');
 
   /* The four lifting days. Lighter lift first. */
   var DAYS = [
@@ -131,7 +130,11 @@
     if (r.belowBar) { line.textContent = 'Below the bar (' + fmtNum(state.settings.bar) + ' ' + unit() + ')'; return line; }
     if (!r.perSide.length) { line.textContent = 'Empty bar'; return line; }
     line.appendChild(el('span', { class: 'muted', text: 'Per side: ' }));
-    r.perSide.forEach(function (p) { line.appendChild(el('span', { class: 'plate', text: fmtNum(p) })); });
+    /* Bumper-plate colours, kg only: 25 red, 20 blue, 15 yellow, 10 green, 5 white. */
+    r.perSide.forEach(function (p) {
+      var colour = unit() === 'kg' && [25, 20, 15, 10, 5].indexOf(p) >= 0 ? ' plate-' + p : '';
+      line.appendChild(el('span', { class: 'plate' + colour, text: fmtNum(p) }));
+    });
     if (!r.exact) line.appendChild(el('span', { class: 'muted', text: ' = ' + fmtNum(r.total) + ' ' + unit() + ' (nearest)' }));
     return line;
   }
@@ -215,6 +218,38 @@
     if (wk.length) parts.push(group(wk));
     if (wu.length) parts.push('warmup ' + group(wu));
     return parts.join('  ·  ');
+  }
+
+  /* Working sets only, e.g. "40 kg × 5, 5, 7". Warmups are left out. */
+  function workingSummary(en) {
+    var sets = workingSets(en).filter(function (s) { return s.weight != null || s.reps != null; });
+    if (!sets.length) return 'no working sets';
+    var out = [], cur = null;
+    sets.forEach(function (s) {
+      if (cur && cur.weight === s.weight) cur.reps.push(s.reps);
+      else { cur = { weight: s.weight, reps: [s.reps] }; out.push(cur); }
+    });
+    return out.map(function (g) {
+      return (g.weight == null ? '–' : fmtNum(g.weight) + ' ' + unit()) + ' × ' + g.reps.map(fmtNum).join(', ');
+    }).join(' · ');
+  }
+
+  /* "Last time" summary box for a weights card. */
+  function lastBlock(last, sug) {
+    return el('div', { class: 'last' }, [
+      el('div', { class: 'last-date', text: 'Last time · ' + fmtDate(last.workout.date) }),
+      el('div', { class: 'last-row' }, [
+        el('span', { class: 'last-k', text: 'Working weight' }),
+        el('span', { class: 'last-v', text: workingSummary(last.entry) })
+      ]),
+      sug ? el('div', { class: 'last-row' }, [
+        el('span', { class: 'last-k', text: 'Target' }),
+        el('span', { class: 'last-v' }, [
+          el('b', { class: 'last-target', text: fmtNum(sug.weight) + ' ' + unit() }),
+          el('span', { class: 'last-why', text: sug.why })
+        ])
+      ]) : null
+    ]);
   }
 
   /* Most recent entry for an exercise, skipping one workout. */
@@ -440,22 +475,36 @@
         var label;
         if (s.warmup) label = 'W' + (++wuIdx);
         else { workIdx++; label = (ex.program && workIdx === nWork) ? workIdx + ' (5+)' : String(workIdx); }
+        var isLast = !s.warmup && workIdx === nWork;
+        var labelBtn = el('button', { class: 'setlabel', title: 'Tap to toggle warmup', onclick: function () {
+          s.warmup = !s.warmup;
+          saveNow().then(rerender);
+        } });
+        /* Working sets go green with a tick once their reps are in. */
+        function markDone() {
+          var done = !s.warmup && s.reps != null;
+          tr.classList.toggle('is-done', done);
+          labelBtn.textContent = done ? '✓ ' + label : label;
+        }
+        var repsInp = numInput(s, 'reps', {
+          inputmode: 'numeric', step: '1',
+          placeholder: s.warmup || !ex.program ? '' : (isLast ? '5+' : '5')
+        }, function (wasBlank) {
+          /* Rest timer: programme lifts only, working sets only, and only when the
+             reps were just logged (correcting a number does not restart it). */
+          if (s.reps != null && opts.live && wasBlank && !s.warmup && (ex.program || state.settings.restAccessories)) startRest();
+        });
+        repsInp.addEventListener('input', markDone);
         var tr = el('tr', { class: s.warmup ? 'is-warmup' : '' }, [
-          el('td', null, [el('button', { class: 'setlabel', text: label, title: 'Tap to toggle warmup', onclick: function () {
-            s.warmup = !s.warmup;
-            saveNow().then(rerender);
-          } })]),
+          el('td', null, [labelBtn]),
           el('td', null, [numInput(s, 'weight')]),
-          el('td', null, [numInput(s, 'reps', { inputmode: 'numeric', step: '1' }, function (wasBlank) {
-            /* Rest timer: programme lifts only, working sets only, and only when the
-               reps were just logged (correcting a number does not restart it). */
-            if (s.reps != null && opts.live && wasBlank && !s.warmup && (ex.program || state.settings.restAccessories)) startRest();
-          })]),
+          el('td', null, [repsInp]),
           el('td', { class: 'x' }, [el('button', { class: 'btn btn-ghost btn-icon', text: '×', 'aria-label': 'Remove set', onclick: function () {
             en.sets.splice(i, 1);
             saveNow().then(rerender);
           } })])
         ]);
+        markDone();
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
@@ -476,8 +525,17 @@
     function amrapHint(ex, en) {
       if (en.target == null) return null;
       var inc = ex.increment || 2.5, w = en.target;
-      return el('div', { class: 'hint', text: 'Last set at ' + fmtNum(w) + ': 5–9 reps → ' + fmtNum(w + inc) +
-        ' next time · 10+ → ' + fmtNum(w + 2 * inc) + ' · under 5 → ' + fmtNum(roundTo(w * 0.9, warmupStep())) });
+      function pill(k, v, cls) {
+        return el('span', { class: 'npill ' + cls }, [el('span', { class: 'npill-k', text: k }), el('b', { text: fmtNum(v) })]);
+      }
+      return el('div', { class: 'next' }, [
+        el('div', { class: 'next-label', text: 'Next time, by reps on the last set' }),
+        el('div', { class: 'next-pills' }, [
+          pill('under 5', roundTo(w * 0.9, warmupStep()), 'is-down'),
+          pill('5–9', w + inc, 'is-up'),
+          pill('10+', w + 2 * inc, 'is-up')
+        ])
+      ]);
     }
 
     function entryCard(en) {
@@ -492,7 +550,8 @@
           saveNow().then(rerender);
         } })
       ]));
-      card.appendChild(exerciseNote(ex));
+      var exNote = exerciseNote(ex);
+      if (exNote) card.appendChild(exNote);
 
       // ---- cardio ----
       if (ex.type === 'cardio') {
@@ -528,15 +587,12 @@
       if (ex.program) {
         var sug = last ? suggestNext(ex, last.entry) : null;
         if (last) {
-          card.appendChild(el('div', { class: 'last' }, [
-            el('div', { class: 'hint', text: 'Last time (' + fmtDate(last.workout.date) + '): ' + summariseEntry(last.entry) }),
-            sug ? el('div', { class: 'hint hint-strong', text: 'Target: ' + fmtNum(sug.weight) + ' ' + unit() + ' — ' + sug.why }) : null
-          ]));
+          card.appendChild(lastBlock(last, sug));
         } else {
           card.appendChild(el('div', { class: 'hint', text: 'First session. Enter a working weight to build warmups and sets.' }));
         }
 
-        var targetRow = el('div', { class: 'row' });
+        var targetRow = el('div', { class: 'row target-row' });
         var targetInp = el('input', { type: 'number', inputmode: 'decimal', step: 'any', placeholder: 'working ' + unit(), 'aria-label': 'Working weight' });
         targetInp.value = en.target != null ? en.target : (sug && !en.sets.length ? sug.weight : '');
         var buildBtn = el('button', { class: 'btn btn-primary', text: en.sets.length ? 'Rebuild sets' : 'Build sets', onclick: function () {
@@ -551,16 +607,22 @@
           var t = Number(targetInp.value);
           var pl = card.querySelector('.plates-slot');
           pl.innerHTML = '';
-          if (ex.barbell && t) pl.appendChild(platesLine(t));
+          var tl = ex.barbell && t ? platesLine(t) : null;
+          if (tl) pl.appendChild(tl);
         });
         targetRow.appendChild(targetInp);
         targetRow.appendChild(buildBtn);
         card.appendChild(targetRow);
         var slot = el('div', { class: 'plates-slot' });
-        if (ex.barbell && Number(targetInp.value)) slot.appendChild(platesLine(Number(targetInp.value)));
+        var slotLine = ex.barbell ? platesLine(Number(targetInp.value) || null) : null;
+        if (slotLine) slot.appendChild(slotLine);
         card.appendChild(slot);
 
-        if (en.sets.length) { card.appendChild(setsTable(en, ex)); card.appendChild(amrapHint(ex, en)); }
+        if (en.sets.length) {
+          card.appendChild(setsTable(en, ex));
+          var hint = amrapHint(ex, en);
+          if (hint) card.appendChild(hint);
+        }
         card.appendChild(el('div', { class: 'row' }, [
           el('button', { class: 'btn grow', text: '+ Set', onclick: function () {
             var prev = workingSets(en).slice(-1)[0] || { weight: en.target, reps: null };
@@ -572,13 +634,12 @@
       }
 
       // ---- accessory lift ----
-      card.appendChild(el('div', { class: 'hint', text: last
-        ? 'Last time (' + fmtDate(last.workout.date) + '): ' + summariseEntry(last.entry)
-        : 'First time logging this.' }));
+      card.appendChild(last ? lastBlock(last, null) : el('div', { class: 'hint', text: 'First time logging this.' }));
       if (en.sets.length) card.appendChild(setsTable(en, ex));
       if (ex.barbell) {
         var lastW = en.sets.length ? en.sets[en.sets.length - 1].weight : null;
-        if (lastW != null) card.appendChild(platesLine(lastW));
+        var lastLine = platesLine(lastW);
+        if (lastLine) card.appendChild(lastLine);
       }
       var actions = el('div', { class: 'row' });
       actions.appendChild(el('button', { class: 'btn btn-primary grow', text: '+ Set', onclick: function () {
@@ -1222,7 +1283,7 @@
     unitSel.value = st.unit;
     unitSel.addEventListener('change', async function () {
       var was = st.unit;
-      await setSetting('unit', unitSel.value); unitBadge.textContent = st.unit;
+      await setSetting('unit', unitSel.value);
       /* Keep the rounding step sensible if it was still the default for the old unit. */
       if (was === 'kg' && st.unit === 'lb' && st.warmupStep === 2.5) await setSetting('warmupStep', 5);
       if (was === 'lb' && st.unit === 'kg' && st.warmupStep === 5) await setSetting('warmupStep', 2.5);
@@ -1282,7 +1343,6 @@
   async function reloadAll() {
     await reloadExercises();
     state.settings = await S.getSettings();
-    unitBadge.textContent = state.settings.unit;
   }
 
   var renderers = { today: renderToday, history: renderHistory, progress: renderProgress, settings: renderSettings };

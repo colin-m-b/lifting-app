@@ -40,13 +40,6 @@ body {
 }
 .sticky-top { position: sticky; top: 0; z-index: 5; }
 .top h1 { margin: 0; font-size: 22px; font-weight: 700; }
-.badge {
-  font-size: 13px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 10px;
-}
 
 .view {
   flex: 1;
@@ -234,7 +227,22 @@ label.field input, label.field select { margin-top: 4px; }
   vertical-align: middle;
 }
 .hint-strong { color: var(--accent); font-weight: 600; }
-.last { margin-bottom: 8px; }
+.last {
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.last-date { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.last-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 15px; }
+.last-row + .last-row { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.last-k { color: var(--muted); font-size: 14px; flex: none; }
+.last-v { text-align: right; font-variant-numeric: tabular-nums; }
+.last-target { color: var(--accent); }
+.last-why { display: block; font-size: 12px; color: var(--muted); }
+
+.target-row input { flex: 1; width: auto; }
+.target-row .btn { flex: none; min-width: 124px; }
 
 .plates { font-size: 14px; margin: 8px 0 4px; }
 .plate {
@@ -338,3 +346,25 @@ label.field input, label.field select { margin-top: 4px; }
 .seg-btn { flex: 1; min-height: 36px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .seg-btn.is-active { background: var(--panel-2); color: var(--text); }
 .group-stats { margin: -4px 0 10px; }
+
+/* Finished working sets */
+.sets tr.is-done input { border-color: var(--accent); background: rgba(79, 209, 165, .10); }
+.sets tr.is-done .setlabel { color: var(--accent); font-weight: 700; }
+.sets input::placeholder { color: var(--muted); opacity: .45; }
+
+/* Next-time weights under a programme lift */
+.next { margin: 2px 0 10px; }
+.next-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.next-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.npill { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.npill-k { font-size: 12px; color: var(--muted); }
+.npill b { font-size: 16px; }
+.npill.is-down b { color: var(--danger); }
+.npill.is-up b { color: var(--accent); }
+
+/* Bumper-plate colours (kg) */
+.plate-25 { background: #c0392b; border-color: #c0392b; color: #fff; }
+.plate-20 { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
+.plate-15 { background: #e3b52a; border-color: #e3b52a; color: #1a1a1a; }
+.plate-10 { background: #2e9e5b; border-color: #2e9e5b; color: #fff; }
+.plate-5 { background: #eef1f5; border-color: #eef1f5; color: #1a1a1a; }
