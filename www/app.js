@@ -492,7 +492,8 @@
           saveNow().then(rerender);
         } })
       ]));
-      card.appendChild(exerciseNote(ex));
+      var exNote = exerciseNote(ex);
+      if (exNote) card.appendChild(exNote);
 
       // ---- cardio ----
       if (ex.type === 'cardio') {
@@ -551,16 +552,22 @@
           var t = Number(targetInp.value);
           var pl = card.querySelector('.plates-slot');
           pl.innerHTML = '';
-          if (ex.barbell && t) pl.appendChild(platesLine(t));
+          var tl = ex.barbell && t ? platesLine(t) : null;
+          if (tl) pl.appendChild(tl);
         });
         targetRow.appendChild(targetInp);
         targetRow.appendChild(buildBtn);
         card.appendChild(targetRow);
         var slot = el('div', { class: 'plates-slot' });
-        if (ex.barbell && Number(targetInp.value)) slot.appendChild(platesLine(Number(targetInp.value)));
+        var slotLine = ex.barbell ? platesLine(Number(targetInp.value) || null) : null;
+        if (slotLine) slot.appendChild(slotLine);
         card.appendChild(slot);
 
-        if (en.sets.length) { card.appendChild(setsTable(en, ex)); card.appendChild(amrapHint(ex, en)); }
+        if (en.sets.length) {
+          card.appendChild(setsTable(en, ex));
+          var hint = amrapHint(ex, en);
+          if (hint) card.appendChild(hint);
+        }
         card.appendChild(el('div', { class: 'row' }, [
           el('button', { class: 'btn grow', text: '+ Set', onclick: function () {
             var prev = workingSets(en).slice(-1)[0] || { weight: en.target, reps: null };
@@ -578,7 +585,8 @@
       if (en.sets.length) card.appendChild(setsTable(en, ex));
       if (ex.barbell) {
         var lastW = en.sets.length ? en.sets[en.sets.length - 1].weight : null;
-        if (lastW != null) card.appendChild(platesLine(lastW));
+        var lastLine = platesLine(lastW);
+        if (lastLine) card.appendChild(lastLine);
       }
       var actions = el('div', { class: 'row' });
       actions.appendChild(el('button', { class: 'btn btn-primary grow', text: '+ Set', onclick: function () {
