@@ -217,6 +217,38 @@
     return parts.join('  ·  ');
   }
 
+  /* Working sets only, e.g. "40 kg × 5, 5, 7". Warmups are left out. */
+  function workingSummary(en) {
+    var sets = workingSets(en).filter(function (s) { return s.weight != null || s.reps != null; });
+    if (!sets.length) return 'no working sets';
+    var out = [], cur = null;
+    sets.forEach(function (s) {
+      if (cur && cur.weight === s.weight) cur.reps.push(s.reps);
+      else { cur = { weight: s.weight, reps: [s.reps] }; out.push(cur); }
+    });
+    return out.map(function (g) {
+      return (g.weight == null ? '–' : fmtNum(g.weight) + ' ' + unit()) + ' × ' + g.reps.map(fmtNum).join(', ');
+    }).join(' · ');
+  }
+
+  /* "Last time" summary box for a weights card. */
+  function lastBlock(last, sug) {
+    return el('div', { class: 'last' }, [
+      el('div', { class: 'last-date', text: 'Last time · ' + fmtDate(last.workout.date) }),
+      el('div', { class: 'last-row' }, [
+        el('span', { class: 'last-k', text: 'Working weight' }),
+        el('span', { class: 'last-v', text: workingSummary(last.entry) })
+      ]),
+      sug ? el('div', { class: 'last-row' }, [
+        el('span', { class: 'last-k', text: 'Target' }),
+        el('span', { class: 'last-v' }, [
+          el('b', { class: 'last-target', text: fmtNum(sug.weight) + ' ' + unit() }),
+          el('span', { class: 'last-why', text: sug.why })
+        ])
+      ]) : null
+    ]);
+  }
+
   /* Most recent entry for an exercise, skipping one workout. */
   function lastEntryFor(workouts, exerciseId, excludeWorkoutId) {
     for (var i = 0; i < workouts.length; i++) {
@@ -529,15 +561,12 @@
       if (ex.program) {
         var sug = last ? suggestNext(ex, last.entry) : null;
         if (last) {
-          card.appendChild(el('div', { class: 'last' }, [
-            el('div', { class: 'hint', text: 'Last time (' + fmtDate(last.workout.date) + '): ' + summariseEntry(last.entry) }),
-            sug ? el('div', { class: 'hint hint-strong', text: 'Target: ' + fmtNum(sug.weight) + ' ' + unit() + ' — ' + sug.why }) : null
-          ]));
+          card.appendChild(lastBlock(last, sug));
         } else {
           card.appendChild(el('div', { class: 'hint', text: 'First session. Enter a working weight to build warmups and sets.' }));
         }
 
-        var targetRow = el('div', { class: 'row' });
+        var targetRow = el('div', { class: 'row target-row' });
         var targetInp = el('input', { type: 'number', inputmode: 'decimal', step: 'any', placeholder: 'working ' + unit(), 'aria-label': 'Working weight' });
         targetInp.value = en.target != null ? en.target : (sug && !en.sets.length ? sug.weight : '');
         var buildBtn = el('button', { class: 'btn btn-primary', text: en.sets.length ? 'Rebuild sets' : 'Build sets', onclick: function () {
@@ -579,9 +608,7 @@
       }
 
       // ---- accessory lift ----
-      card.appendChild(el('div', { class: 'hint', text: last
-        ? 'Last time (' + fmtDate(last.workout.date) + '): ' + summariseEntry(last.entry)
-        : 'First time logging this.' }));
+      card.appendChild(last ? lastBlock(last, null) : el('div', { class: 'hint', text: 'First time logging this.' }));
       if (en.sets.length) card.appendChild(setsTable(en, ex));
       if (ex.barbell) {
         var lastW = en.sets.length ? en.sets[en.sets.length - 1].weight : null;

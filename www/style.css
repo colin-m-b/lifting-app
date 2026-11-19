@@ -234,7 +234,22 @@ label.field input, label.field select { margin-top: 4px; }
   vertical-align: middle;
 }
 .hint-strong { color: var(--accent); font-weight: 600; }
-.last { margin-bottom: 8px; }
+.last {
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.last-date { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.last-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 15px; }
+.last-row + .last-row { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.last-k { color: var(--muted); font-size: 14px; flex: none; }
+.last-v { text-align: right; font-variant-numeric: tabular-nums; }
+.last-target { color: var(--accent); }
+.last-why { display: block; font-size: 12px; color: var(--muted); }
+
+.target-row input { flex: 1; width: auto; }
+.target-row .btn { flex: none; min-width: 124px; }
 
 .plates { font-size: 14px; margin: 8px 0 4px; }
 .plate {
